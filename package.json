@@ -1,0 +1,32 @@
+{
+  "name": "padel-proactive",
+  "version": "1.0.0",
+  "description": "chatbot para una cancha de padel",
+  "homepage": "",
+  "bugs": {
+    "url": "https://github.com/fracki1010/padel-proactive/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/fracki1010/padel-proactive.git"
+  },
+  "license": "ISC",
+  "author": "Franco Nicolas Galdame",
+  "type": "commonjs",
+  "main": "server.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "node whatsappBot.js"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "dotenv": "^17.2.3",
+    "express": "^5.2.1",
+    "groq-sdk": "^0.37.0",
+    "qrcode-terminal": "^0.12.0",
+    "whatsapp-web.js": "^1.23.0"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.11"
+  }
+}
