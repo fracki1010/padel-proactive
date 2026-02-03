@@ -1,26 +1,30 @@
 require('dotenv').config();
 const { Client, LocalAuth } = require('whatsapp-web.js');
 const qrcode = require('qrcode-terminal');
+const connectDB = require('./src/config/database');
+const app = require('./src/app');
+const { handleIncomingMessage } = require('./src/handlers/messageHandler'); // Importamos el cerebro
 
-// IMPORTANTE: Ajusta esta ruta a donde tengas tu lógica de Groq
-// Si tu groqService exporta una función, úsala aquí.
-// Asumiré que exportas la función 'getChatResponse'
-const { getChatResponse } = require('./src/services/groqService'); 
+const PORT = process.env.PORT || 3000;
 
-// Configuración del cliente para Linux (especialmente si es servidor sin pantalla)
-// const client = new Client({
-//     authStrategy: new LocalAuth(), // Esto guarda la sesión para no escanear QR siempre
-//     puppeteer: {
-//         args: ['--no-sandbox', '--disable-setuid-sandbox'], // Necesario para root/linux server
-//     }
-// });
+// Inicialización
+connectDB().then(() => {
+    app.listen(PORT, () => {
+        console.log(`🚀 Server & Bot corriendo en http://localhost:${PORT}`);
+    });
+});
 
+const isDocker = process.env.IS_DOCKER === 'true';
 
 const client = new Client({
     authStrategy: new LocalAuth(),
     puppeteer: {
-        executablePath: '/usr/bin/google-chrome-stable', // Ruta de Chrome en Docker
-        args: [
+        headless: true,
+        // 1. ELIMINA O COMENTA ESTA LÍNEA:
+        // executablePath: '/usr/bin/google-chrome-stable',
+        
+        // 2. MANTÉN LOS ARGUMENTOS (Son necesarios en Linux/Servidores)
+        args: isDocker ? [
             '--no-sandbox',
             '--disable-setuid-sandbox',
             '--disable-dev-shm-usage',
@@ -28,71 +32,50 @@ const client = new Client({
             '--no-first-run',
             '--no-zygote',
             '--disable-gpu'
-        ],
+        ] : ['--no-sandbox',
+            '--disable-setuid-sandbox',
+            '--disable-dev-shm-usage']
     }
 });
 
-// 1. Generar el QR
-client.on('qr', (qr) => {
-    console.log('⚠️ QR RECIBIDO');
-    
-    // Convertimos los datos del QR en una URL de imagen
-    // Usamos la API de qrserver.com (es gratis y segura para esto)
-    const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(qr)}`;
-    
-    console.log('------------------------------------------------');
-    console.log('👇 HAZ CLIC EN ESTE ENLACE PARA VER EL CÓDIGO QR 👇');
-    console.log(qrUrl);
-    console.log('------------------------------------------------');
-    console.log('Escanea la imagen que aparece en el enlace con tu WhatsApp.');
-});
 
-// 2. Confirmación de conexión
-client.on('ready', () => {
-    console.log('✅ ¡El bot de WhatsApp está listo y conectado!');
-});
 
-// 3. Escuchar mensajes
+client.on('qr', (qr) => qrcode.generate(qr, { small: true }));
+
+client.on('ready', () => console.log('✅ Bot de WhatsApp listo!'));
+
+// --- EVENTO DE MENSAJE ---
 client.on('message', async (message) => {
 
-    // 1. Ignorar Estados/Historias (¡CRUCIAL!)
-    if (message.from === 'status@broadcast') {
-        return;
-    }
+    console.log(message);
+    
+    // Validaciones básicas
+    if (message.from === 'status@broadcast' || message.from.includes('@g.us')) return;
+    if (!message.body) return;
 
-    // 2. (Opcional) Ignorar Grupos (Recomendado para evitar caos)
-    // Si quieres que responda en grupos, borra estas 3 líneas:
-    if (message.from.includes('@g.us')) {
-        return; 
-    }
-
-    // 3. Ignorar mensajes vacíos o medios sin texto
-    if (!message.body || message.body.length === 0) return;
-
-    // Evitar responder a estados o grupos si no quieres
-    if (message.body.length === 0) return;
-
-    console.log(`📩 Mensaje recibido de ${message.from}: ${message.body}`);
+    const chatId = message.from;
+    console.log(`📩 ${chatId}: ${message.body}`);
+    const chat = await message.getChat();
 
     try {
-        // A. Mostrar que el bot está "escribiendo..."
-        const chat = await message.getChat();
         await chat.sendStateTyping();
 
-        // B. Llamar a TU servicio de Groq (el que ya arreglamos con Llama 3.3)
-        const botResponse = await getChatResponse(message.body);
-
-        // C. Responder en WhatsApp
-        await message.reply(botResponse);
+        // DELEGAMOS TODO AL HANDLER
+        const responseText = await handleIncomingMessage(chatId, message.body);
         
-        // Limpiar estado de escribiendo
-        await chat.clearState();
+        // RESPONDEMOS
+        await message.reply(responseText);
 
     } catch (error) {
         console.error('Error procesando mensaje:', error);
-        await message.reply('Lo siento, tuve un error interno procesando tu mensaje.');
+        await message.reply('Tuve un error, por favor intentá de nuevo.');
+    } finally {
+        await chat.clearState();
     }
 });
 
-// Iniciar el cliente
-client.initialize();
+client.initialize()
+    .then(() => console.log('🚀 Proceso de inicialización enviado...'))
+    .catch(err => {
+        console.error('❌ ERROR CRÍTICO AL INICIAR EL BOT:', err);
+    });

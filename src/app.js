@@ -1,20 +1,20 @@
 const express = require('express');
 const cors = require('cors');
 const chatRoutes = require('./routes/chatRoutes');
-
+const bookingRoutes = require('./routes/booking.routes'); 
 const app = express();
 
 // Middlewares
-app.use(cors());              // Permite conexiones desde otros dominios
-app.use(express.json());      // IMPORTANTE: Permite leer JSON en el body
+app.use(cors());
+app.use(express.json());
 
 // Rutas
-// La ruta final será: http://localhost:3000/api/chat
 app.use('/api/chat', chatRoutes);
+app.use('/api/bookings', bookingRoutes); // <--- 2. Agregar ruta base
 
-// Ruta básica de prueba para ver si el servidor vive
+// Ruta básica de prueba
 app.get('/', (req, res) => {
-  res.send('¡El servidor del Chatbot Groq está funcionando! 🚀');
+  res.send('¡El servidor del Chatbot Groq y Reservas está funcionando! 🚀');
 });
 
 module.exports = app;
