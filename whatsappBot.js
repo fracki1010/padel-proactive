@@ -1,81 +1,96 @@
-require('dotenv').config();
-const { Client, LocalAuth } = require('whatsapp-web.js');
-const qrcode = require('qrcode-terminal');
-const connectDB = require('./src/config/database');
-const app = require('./src/app');
-const { handleIncomingMessage } = require('./src/handlers/messageHandler'); // Importamos el cerebro
+require("dotenv").config();
+const qrcode = require("qrcode-terminal");
+const connectDB = require("./src/config/database");
+const app = require("./src/app");
+const { handleIncomingMessage } = require("./src/handlers/messageHandler");
+const client = require("./src/config/whatsappClient");
 
 const PORT = process.env.PORT || 3000;
 
-// Inicialización
-connectDB().then(() => {
+// 1. Conexión a Base de Datos y Servidor Express
+connectDB()
+  .then(() => {
     app.listen(PORT, () => {
-        console.log(`🚀 Server & Bot corriendo en http://localhost:${PORT}`);
+      console.log(`🚀 Server corriendo en http://localhost:${PORT}`);
     });
+  })
+  .catch((err) => {
+    console.error("❌ Error al conectar MongoDB:", err);
+  });
+
+// --- EVENTOS DE MONITOREO ---
+
+client.on("qr", (qr) => {
+  console.log("✨ Nuevo código QR generado. Escanealo por favor:");
+  qrcode.generate(qr, { small: true });
 });
 
-const isDocker = process.env.IS_DOCKER === 'true';
-
-const client = new Client({
-    authStrategy: new LocalAuth(),
-    puppeteer: {
-        headless: true,
-        // 1. ELIMINA O COMENTA ESTA LÍNEA:
-        // executablePath: '/usr/bin/google-chrome-stable',
-        
-        // 2. MANTÉN LOS ARGUMENTOS (Son necesarios en Linux/Servidores)
-        args: isDocker ? [
-            '--no-sandbox',
-            '--disable-setuid-sandbox',
-            '--disable-dev-shm-usage',
-            '--disable-accelerated-2d-canvas',
-            '--no-first-run',
-            '--no-zygote',
-            '--disable-gpu'
-        ] : ['--no-sandbox',
-            '--disable-setuid-sandbox',
-            '--disable-dev-shm-usage']
-    }
+client.on("loading_screen", (percent, message) => {
+  console.log(`⏳ Cargando WhatsApp: ${percent}% - ${message}`);
 });
 
+client.on("authenticated", () => {
+  console.log("✅ ¡Autenticación exitosa!");
+});
 
+client.on("auth_failure", (msg) => {
+  console.error("❌ Fallo de autenticación:", msg);
+});
 
-client.on('qr', (qr) => qrcode.generate(qr, { small: true }));
-
-client.on('ready', () => console.log('✅ Bot de WhatsApp listo!'));
+client.on("ready", () => {
+  console.log("--------------------------------------------");
+  console.log("🌟 ¡BOT DE WHATSAPP LISTO Y CONECTADO! 🌟");
+  console.log("--------------------------------------------");
+});
 
 // --- EVENTO DE MENSAJE ---
-client.on('message', async (message) => {
+client.on("message", async (message) => {
+  // Validaciones básicas
+  if (message.from === "status@broadcast" || message.from.includes("@g.us"))
+    return;
+  if (!message.body) return;
 
-    console.log(message);
-    
-    // Validaciones básicas
-    if (message.from === 'status@broadcast' || message.from.includes('@g.us')) return;
-    if (!message.body) return;
+  const chatId = message.from;
+  console.log(`📩 Mensaje de ${chatId}: ${message.body}`);
 
-    const chatId = message.from;
-    console.log(`📩 ${chatId}: ${message.body}`);
+  try {
     const chat = await message.getChat();
 
-    try {
-        await chat.sendStateTyping();
+    // Simular que escribe da una sensación más humana
+    await chat.sendStateTyping();
 
-        // DELEGAMOS TODO AL HANDLER
-        const responseText = await handleIncomingMessage(chatId, message.body);
-        
-        // RESPONDEMOS
-        await message.reply(responseText);
+    // 1. Obtenemos la respuesta cruda del handler
+    let responseRaw = await handleIncomingMessage(chatId, message.body);
+    let messageToSend = responseRaw;
 
-    } catch (error) {
-        console.error('Error procesando mensaje:', error);
-        await message.reply('Tuve un error, por favor intentá de nuevo.');
-    } finally {
-        await chat.clearState();
+    // 2. Lógica de limpieza: Detectar si es JSON u Objeto
+    if (typeof responseRaw === "object" && responseRaw.message) {
+      // Caso A: El handler devolvió un objeto Javascript { message: "..." }
+      messageToSend = responseRaw.message;
+    } else if (
+      typeof responseRaw === "string" &&
+      responseRaw.trim().startsWith("{")
+    ) {
+      // Caso B: El handler devolvió un STRING en formato JSON '{"message": "..."}'
+      try {
+        const parsed = JSON.parse(responseRaw);
+        if (parsed.message) {
+          messageToSend = parsed.message;
+        }
+      } catch (e) {
+        console.log("El string parecía JSON pero no lo era, se envía normal.");
+      }
     }
+
+    // 3. Responder solo con el texto limpio
+    await message.reply(messageToSend);
+  } catch (error) {
+    console.error("Error procesando mensaje:", error);
+  }
 });
 
-client.initialize()
-    .then(() => console.log('🚀 Proceso de inicialización enviado...'))
-    .catch(err => {
-        console.error('❌ ERROR CRÍTICO AL INICIAR EL BOT:', err);
-    });
+// 3. Inicialización con manejo de errores
+console.log("🚀 Iniciando el proceso de WhatsApp...");
+client.initialize().catch((err) => {
+  console.error("❌ Error crítico en initialize():", err);
+});

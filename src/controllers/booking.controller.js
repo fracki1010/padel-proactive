@@ -1,112 +1,251 @@
-const Booking = require('../models/booking.model');
-const TimeSlot = require('../models/timeSlot.model');
-const Court = require('../models/court.model');
+const Booking = require("../models/booking.model");
+const TimeSlot = require("../models/timeSlot.model");
+const Court = require("../models/court.model");
+const User = require("../models/user.model");
+const { sendAdminNotification } = require("../services/notificationService");
 
 // 1. OBTENER RESERVAS (GET)
 const getBookings = async (req, res) => {
   try {
-    const { date } = req.query; // Esperamos formato YYYY-MM-DD
+    const { date } = req.query;
     let query = {};
+    let searchDate = new Date();
 
     if (date) {
-      // Convertimos string "2025-01-20" a objeto Date UTC medianoche
-      const searchDate = new Date(date);
-      searchDate.setUTCHours(0, 0, 0, 0); 
+      searchDate = new Date(date);
+      searchDate.setUTCHours(0, 0, 0, 0);
       query.date = searchDate;
     }
 
+    // A. Obtener reservas reales
     const bookings = await Booking.find(query)
-      .populate('court', 'name')     // Trae nombre de cancha
-      .populate('timeSlot')          // <--- IMPORTANTE: Trae info del turno (hora inicio/fin)
-      .sort({ date: 1 });
+      .populate("timeSlot")
+      .populate("court")
+      .sort({ date: -1, createdAt: -1 });
+
+    // B. Obtener turnos fijos si se buscó por una fecha específica
+    if (date) {
+      const dayOfWeek = searchDate.getUTCDay(); // 0-6 (Dom-Sab)
+
+      const usersWithFixedTurns = await User.find({
+        "fixedTurns.dayOfWeek": dayOfWeek,
+      })
+        .populate("fixedTurns.timeSlot")
+        .populate("fixedTurns.court");
+
+      usersWithFixedTurns.forEach((user) => {
+        user.fixedTurns.forEach((ft) => {
+          if (ft.dayOfWeek === dayOfWeek) {
+            // Verificar si ya hay una reserva real para esta cancha y slot en esta fecha
+            const hasRealBooking = bookings.some((b) => {
+              const isSameSlotAndCourt =
+                b.court?._id?.toString() === ft.court?._id?.toString() &&
+                b.timeSlot?._id?.toString() === ft.timeSlot?._id?.toString();
+
+              if (!isSameSlotAndCourt) return false;
+
+              // Si hay una reserva real ACTIVA (no cancelada), la respetamos y no creamos la virtual.
+              if (b.status !== "cancelado") return true;
+
+              // Si hay una reserva CANCELADA, pero es del mismo usuario del turno fijo,
+              // significa que el usuario canceló SU turno fijo para este día.
+              // Por lo tanto, no recreamos el turno virtual.
+              if (
+                b.status === "cancelado" &&
+                b.clientPhone === user.phoneNumber
+              ) {
+                return true;
+              }
+
+              return false;
+            });
+
+            if (!hasRealBooking) {
+              // Crear reserva "virtual"
+              // Le ponemos un ID especial o simplemente no le ponemos ID de DB
+              bookings.push({
+                _id: `fixed-${user._id}-${ft.court._id}-${ft.timeSlot._id}`,
+                court: ft.court,
+                timeSlot: ft.timeSlot,
+                date: searchDate,
+                clientName: user.name,
+                clientPhone: user.phoneNumber,
+                status: "confirmado",
+                paymentStatus: "pendiente",
+                isFixed: true, // Flag para el frontend
+                finalPrice: ft.timeSlot.price || 0,
+              });
+            }
+          }
+        });
+      });
+    }
+
+    // Ordenar manualmente por el campo 'order' del timeSlot
+    bookings.sort((a, b) => {
+      const orderA = a.timeSlot?.order || 0;
+      const orderB = b.timeSlot?.order || 0;
+      return orderA - orderB;
+    });
 
     res.status(200).json({
       success: true,
       count: bookings.length,
-      data: bookings
+      data: bookings,
     });
   } catch (error) {
+    console.error("Error en getBookings:", error);
     res.status(500).json({ success: false, error: error.message });
   }
 };
 
-// 2. CREAR RESERVA (POST) - Lógica Nueva
+// 2. CREAR RESERVA (POST)
 const createBooking = async (req, res) => {
   try {
-    // Ahora recibimos "time" (ej: "20:00") en lugar de una fecha completa con hora
-    const { courtId, date, time, clientName, clientPhone } = req.body;
+    const {
+      courtId,
+      date,
+      time,
+      slotId,
+      clientName,
+      clientPhone,
+      paymentStatus,
+      status,
+      finalPrice,
+    } = req.body;
 
     // A. Validaciones básicas
-    if (!courtId || !date || !time || !clientName || !clientPhone) {
-      return res.status(400).json({ 
-        success: false, 
-        error: 'Faltan datos: courtId, date (YYYY-MM-DD), time (HH:mm), clientName o clientPhone' 
+    if (!courtId || !date || (!time && !slotId)) {
+      return res.status(400).json({
+        success: false,
+        error: "Faltan datos: courtId, date, y (time o slotId)",
       });
     }
 
-    // B. Buscar el TimeSlot (El turno fijo)
-    const slot = await TimeSlot.findOne({ startTime: time });
-    if (!slot) {
-      return res.status(400).json({ success: false, error: 'Horario no válido o inexistente' });
+    // B. Buscar el TimeSlot
+    let slot;
+    if (slotId) {
+      slot = await TimeSlot.findById(slotId);
+    } else {
+      slot = await TimeSlot.findOne({ startTime: time });
     }
 
-    // C. Preparar fecha exacta (Sin horas, solo día)
+    if (!slot) {
+      return res
+        .status(400)
+        .json({ success: false, error: "Horario no válido o inexistente" });
+    }
+
+    // C. Preparar fecha exacta
     const bookingDate = new Date(date);
     bookingDate.setUTCHours(0, 0, 0, 0);
 
-    // D. Validar Disponibilidad (Busqueda exacta)
-    // "¿Existe ya una reserva activa para esta cancha, este día y este slot?"
+    // D. Validar Disponibilidad
     const existingBooking = await Booking.findOne({
       court: courtId,
       date: bookingDate,
       timeSlot: slot._id,
-      status: { $ne: 'cancelado' }
+      status: { $ne: "cancelado" },
     });
 
     if (existingBooking) {
       return res.status(409).json({
         success: false,
-        error: 'La cancha ya está reservada en ese turno.'
+        error: "Este turno ya tiene una actividad (reserva o suspensión).",
       });
     }
 
-    // E. Crear la Reserva (Usando el precio del Slot)
+    // E. Crear
     const newBooking = await Booking.create({
       court: courtId,
       date: bookingDate,
-      timeSlot: slot._id, // Guardamos la referencia al turno
-      clientName,
-      clientPhone,
-      finalPrice: slot.price, // Usamos el precio que ya está en la BD
-      status: 'confirmado'
+      timeSlot: slot._id,
+      clientName: clientName || "SISTEMA",
+      clientPhone: clientPhone || "MANTENIMIENTO",
+      finalPrice: finalPrice !== undefined ? finalPrice : slot.price,
+      status: status || "confirmado",
+      paymentStatus: paymentStatus || "pagado",
     });
 
-    // F. Responder con datos completos (poblados)
-    await newBooking.populate(['court', 'timeSlot']);
+    await newBooking.populate(["court", "timeSlot"]);
+
+    // Notificar al admin
+    if (newBooking.status !== "suspendido") {
+      await sendAdminNotification(
+        "new_booking",
+        "Nuevo Turno Reservado",
+        `Cliente: ${newBooking.clientName}\nFecha: ${newBooking.date.toLocaleDateString()}\nHora: ${newBooking.timeSlot.startTime}\nCancha: ${newBooking.court.name}`,
+        { bookingId: newBooking._id },
+      );
+    }
 
     res.status(201).json({
       success: true,
-      data: {
-        id: newBooking._id,
-        court: newBooking.court.name,
-        date: newBooking.date.toISOString().split('T')[0],
-        time: `${newBooking.timeSlot.startTime} - ${newBooking.timeSlot.endTime}`,
-        price: newBooking.finalPrice,
-        client: newBooking.clientName
-      }
+      data: newBooking,
     });
-
   } catch (error) {
-    console.error(error);
-    // Manejo de error por índice único duplicado (Doble seguridad)
+    console.error("Error en createBooking:", error);
     if (error.code === 11000) {
-        return res.status(409).json({ success: false, error: 'La cancha ya está reservada.' });
+      return res
+        .status(409)
+        .json({ success: false, error: "Este turno ya está ocupado." });
     }
-    res.status(500).json({ success: false, error: 'Error interno al reservar' });
+    res.status(500).json({ success: false, error: error.message });
+  }
+};
+
+// 3. ELIMINAR RESERVA (DELETE)
+const deleteBooking = async (req, res) => {
+  try {
+    const booking = await Booking.findByIdAndDelete(req.params.id);
+    if (!booking) {
+      return res
+        .status(404)
+        .json({ success: false, error: "Reserva no encontrada" });
+    }
+    res.status(200).json({ success: true, data: {} });
+  } catch (error) {
+    console.error("Error en deleteBooking:", error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+};
+
+// 4. ACTUALIZAR RESERVA (PUT)
+const updateBooking = async (req, res) => {
+  try {
+    const { id } = req.params;
+    console.log(`Actualizando reserva ${id}:`, req.body);
+
+    // Limpiar campos que no deben actualizarse directamente o que darían error
+    const updateData = { ...req.body };
+    delete updateData._id;
+    delete updateData.id;
+    delete updateData.createdAt;
+    delete updateData.updatedAt;
+    delete updateData.__v;
+
+    const updatedBooking = await Booking.findByIdAndUpdate(
+      id,
+      { $set: updateData },
+      { new: true, runValidators: true },
+    ).populate(["court", "timeSlot"]);
+
+    if (!updatedBooking) {
+      return res
+        .status(404)
+        .json({ success: false, error: "Reserva no encontrada" });
+    }
+
+    res.status(200).json({ success: true, data: updatedBooking });
+  } catch (error) {
+    console.error("Error en updateBooking:", error);
+    res.status(500).json({ success: false, error: error.message });
   }
 };
 
 module.exports = {
   getBookings,
-  createBooking
+  createBooking,
+  deleteBooking,
+  updateBooking,
 };
