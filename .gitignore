@@ -25,6 +25,14 @@ dev-dist/
 dist/
 build/
 
+# Separate module repos (each is its own git repository)
+padel-proactive-backend/
+padel-proactive-frontend/
+padel-proactive-whatsapp-worker/
+
+# Editor workspace files
+*.code-workspace
+
 # OS / editor
 .DS_Store
 .vscode/
