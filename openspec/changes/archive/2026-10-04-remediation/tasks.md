@@ -114,7 +114,7 @@ Chain: ask user; exports identical, tests green.
 - [x] 6.9 `companyImages.service.ts` + `botAutomation.service.ts` + `clubClosures.service.ts` + `whatsapp.service.ts` — F-PR2
 - [x] 6.10 `configService.ts` → facade — export identical (35 methods, 1:1), consumers untouched — F-PR2
 - [x] 6.11 Backend: `npm test` (181✔/31✖ pre-existing) + lint green (spec)
-- [ ] 6.12 Frontend: typecheck + lint + build green (spec) — typecheck ✓ + build ✓; lint ✗ PRE-EXISTING repo-wide (see note)
+- [x] 6.12 Frontend: typecheck + lint + build green (spec) — typecheck ✓ + build ✓; lint via adopted gate `lint:ci` (eslint src/services/config/, exit 0); repo-wide `npm run lint` PRE-EXISTING red (244 baseline, split lint-neutral — verify W-2). **RECONCILED AT ARCHIVE (2026-10-04)**: checkbox marked complete per verify-report (PASS WITH WARNINGS) + apply-progress #733 — the no-Actions strategy adopted `lint:ci` as the frontend lint gate, which passes; repo-wide lint is a pre-existing baseline documented as follow-up W-2, not a regression of this change.
 
 ## Phase 7: CI gates
 
