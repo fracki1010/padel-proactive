@@ -1,0 +1,63 @@
+services:
+  redis:
+    image: redis:7-alpine
+    container_name: padel-proactive-redis
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis_data:/data
+
+  backend-api:
+    build:
+      context: ./padel-proactive-backend
+      dockerfile: Dockerfile
+    container_name: padel-proactive-api
+    restart: unless-stopped
+    command: ["node", "apiServer.js"]
+    env_file:
+      - ./padel-proactive-backend/.env
+    environment:
+      WHATSAPP_QUEUE_DRIVER: redis
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_DB: 0
+      REDIS_TLS: "false"
+    ports:
+      - "3000:3000"
+    depends_on:
+      - redis
+
+  whatsapp-worker:
+    build:
+      context: ./padel-proactive-whatsapp-worker
+      dockerfile: Dockerfile
+    container_name: padel-proactive-whatsapp-worker
+    restart: unless-stopped
+    init: true
+    stop_grace_period: 45s
+    command: ["node", "src/index.js"]
+    env_file:
+      - ./padel-proactive-whatsapp-worker/.env
+    environment:
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_DB: 0
+      REDIS_TLS: "false"
+      PUPPETEER_EXECUTABLE_PATH: /usr/bin/chromium
+      WA_AUTH_DATA_PATH: /usr/src/app/.wwebjs_auth
+    volumes:
+      - whatsapp_sessions:/usr/src/app/.wwebjs_auth
+      - whatsapp_cache:/usr/src/app/.wwebjs_cache
+    depends_on:
+      - redis
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3010/ready"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 45s
+
+volumes:
+  redis_data:
+  whatsapp_sessions:
+  whatsapp_cache:
