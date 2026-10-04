@@ -119,17 +119,20 @@ Chain: ask user; exports identical, tests green.
 ## Phase 7: CI gates
 
 > **DONE (2026-10-04)**: workflows ×3 creados + branch protection aplicada vía REST API.
-> Backend (B-PR6 `6225e01`+`8cf3e69`): job `backend-ci` (npm ci + lint + test; api-sections MOVED to
-> `src/tests/api/`, unit glob `src/tests/*.test.js` — `npm test` ahora exit 0, 181 ✔). Frontend (F-PR2 `39c17db`):
-> `"typecheck": "tsc -b"` + `"lint:ci": "eslint src/services/config/"` + override no-explicit-any para el split.
-> Worker (W-PR1 `fab4308`): `scripts/smoke.js` (D1) + `"smoke"` + job `worker-smoke`.
-> ⚠️ **BLOCKERS**: (1) cuenta GitHub con **billing lock** → ningún job de Actions corre
-> ("The job was not started because your account is locked due to a billing issue"); (2) required checks
-> aplicados sobre main → PRs de la cadena sin el workflow en su branch quedan `blocked` (B-PR1..B-PR5, F-PR1).
-> Resolución recomendada: resolver billing → mergear los PRs de workflow (o desactivar protección temporalmente,
-> `DELETE /branches/main/protection`, y re-aplicar post-merge) → ver sdd-verify.
+> **DEVIAÇÃO ESTRATÉGICA (2026-10-04) — CERO GITHUB ACTIONS (decisión del usuario)**: la cuenta GitHub está
+> locked por billing y el usuario NO usará Actions. La Fase 7 CI se reemplaza por **verificación local**
+> (`scripts/verify-local.sh` en la raíz) + flujo push/pull de git. Estado actual:
+> - Los 3 workflows CI creados (backend-ci, frontend-ci, worker-smoke) fueron **ELIMINADOS** (commits
+>   backend `35df9b4` → B-PR6, frontend `2fbe94f` → F-PR2, worker `b440498` → W-PR1). Los workflows de
+>   deploy pre-existentes (backend/worker SSH a Hetzner, frontend Firebase) quedan INTACTOS.
+> - La **branch protection** aplicada en Fase 7 fue **REMOVED** vía `DELETE /branches/main/protection`
+>   (verificado: GET 404) en los 3 repos.
+> - Se CONSERVAN los gates locales: backend `npm test` (api-sections movido a `src/tests/api/`, glob
+>   unitario `src/tests/*.test.js` — exit 0, 181 ✔) + lint; frontend `typecheck` + `lint:ci`
+>   (`eslint src/services/config/`) + build; worker `scripts/smoke.js` + `npm run smoke`.
+> - Gate agregado: `scripts/verify-local.sh` (raíz) corre npm ci + lint + test por módulo y reporta OK/FAIL.
 
-- [x] 7.1 Backend workflow job `backend-ci` (test+lint)
-- [x] 7.2 Frontend `"typecheck": "tsc -b"` + job `frontend-ci`
-- [x] 7.3 Worker `scripts/smoke.js` + `"smoke"` + job `worker-smoke`
-- [x] 7.4 Branch protection `gh api`, strict (dep: 7.1–7.3 green) — APLICADA (REST OK ×3); gating bloqueado por billing lock + cadena sin workflow
+- [x] 7.1 Backend gate local: `npm run lint` + `npm test` (exit 0, 181 ✔) — workflow CI ELIMINADO (no-Actions)
+- [x] 7.2 Frontend gates locales: `typecheck` + `lint:ci` + `build` (exit 0) — workflow CI ELIMINADO (no-Actions)
+- [x] 7.3 Worker gate local: `scripts/smoke.js` / `npm run smoke` (exit 0, 29 archivos) — workflow CI ELIMINADO (no-Actions)
+- [x] 7.4 Branch protection — APLICADA en Fase 7 y luego REMOVED (decisión no-Actions); verificación local vía `scripts/verify-local.sh`
