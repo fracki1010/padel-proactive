@@ -118,7 +118,18 @@ Chain: ask user; exports identical, tests green.
 
 ## Phase 7: CI gates
 
-- [ ] 7.1 Backend workflow job `backend-ci` (test+lint)
-- [ ] 7.2 Frontend `"typecheck": "tsc -b"` + job `frontend-ci`
-- [ ] 7.3 Worker `scripts/smoke.js` + `"smoke"` + job `worker-smoke`
-- [ ] 7.4 Branch protection `gh api`, strict (dep: 7.1–7.3 green)
+> **DONE (2026-10-04)**: workflows ×3 creados + branch protection aplicada vía REST API.
+> Backend (B-PR6 `6225e01`+`8cf3e69`): job `backend-ci` (npm ci + lint + test; api-sections MOVED to
+> `src/tests/api/`, unit glob `src/tests/*.test.js` — `npm test` ahora exit 0, 181 ✔). Frontend (F-PR2 `39c17db`):
+> `"typecheck": "tsc -b"` + `"lint:ci": "eslint src/services/config/"` + override no-explicit-any para el split.
+> Worker (W-PR1 `fab4308`): `scripts/smoke.js` (D1) + `"smoke"` + job `worker-smoke`.
+> ⚠️ **BLOCKERS**: (1) cuenta GitHub con **billing lock** → ningún job de Actions corre
+> ("The job was not started because your account is locked due to a billing issue"); (2) required checks
+> aplicados sobre main → PRs de la cadena sin el workflow en su branch quedan `blocked` (B-PR1..B-PR5, F-PR1).
+> Resolución recomendada: resolver billing → mergear los PRs de workflow (o desactivar protección temporalmente,
+> `DELETE /branches/main/protection`, y re-aplicar post-merge) → ver sdd-verify.
+
+- [x] 7.1 Backend workflow job `backend-ci` (test+lint)
+- [x] 7.2 Frontend `"typecheck": "tsc -b"` + job `frontend-ci`
+- [x] 7.3 Worker `scripts/smoke.js` + `"smoke"` + job `worker-smoke`
+- [x] 7.4 Branch protection `gh api`, strict (dep: 7.1–7.3 green) — APLICADA (REST OK ×3); gating bloqueado por billing lock + cadena sin workflow
