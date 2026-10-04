@@ -82,6 +82,16 @@ chosen and executed for the openspec state (specs sync + archive move). Module
 repos (backend/frontend/worker) are untouched — their deploy workflows fire on
 push to main, so nothing was pushed there.
 
+## Post-commit finding (fixed at archive)
+
+After the first archive commit, the gitleaks pre-commit hook was detected as
+committed with mode `100644` (non-executable) — git's `advice.ignoredHook`
+warning confirmed the hook is skipped on fresh clones, which contradicts the
+repo-hygiene requirement that gitleaks MUST run as pre-commit. The hook had been
+tested during apply (reject scenario ×4) in worktrees where it was executable,
+but the committed mode was wrong. Fix: `chmod +x .githooks/pre-commit`
+(mode → `100755`), committed locally on `main` as a follow-up commit.
+
 ## Engram Traceability
 
 - apply-progress: memory **#733** (`sdd/remediation/apply-progress`, decision,
