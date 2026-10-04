@@ -66,28 +66,55 @@ Chain: ask user; exports identical, tests green.
 
 ## Phase 4: Gitleaks hooks ×4
 
-- [ ] 4.1 `.githooks/pre-commit` ×4: `gitleaks protect --staged --verbose`, `command -v` guard; secret rejected
-- [ ] 4.2 `git config core.hooksPath .githooks` ×4
+> **DONE (2026-10-03)**: gitleaks v8.30.1. Hook `.githooks/pre-commit` (`gitleaks protect --staged --redact`,
+> WARN-only if binary missing) committed ×4 + `core.hooksPath=.githooks` ×4.
+> Reject scenario tested ×4 (fake `github-pat` staged → commit blocked, exit 1, HEAD unchanged);
+> clean scenario = hook commits themselves (all passed).
+> Commits: root `72017fe` (pushed → PR #1), backend `ad5b48c`, frontend `190a04e`, worker `0f9e172`
+> (backend/frontend/worker local-only, will ride their first PRs).
+> `gitleaks detect` full scan: **worker clean (exit 0)**; root/backend/frontend report historical findings
+> (see apply-progress; redacted, NOT exposed).
+
+- [x] 4.1 `.githooks/pre-commit` ×4: `gitleaks protect --staged --redact`, `command -v` guard; secret rejected (tested ×4)
+- [x] 4.2 `git config core.hooksPath .githooks` ×4
 
 ## Phase 5: Backend lint foundation
 
-- [ ] 5.1 `eslint.config.js` flat: node globals, commonjs, `no-undef`; lint green
-- [ ] 5.2 eslint devDep + `"lint": "eslint src/"`
+> **DONE (2026-10-03)**: commit `1f13045 chore: add minimal eslint flat config and lint script` (backend `main`, local).
+> eslint 10.12.0 + globals 17.13.0 (devDeps; globals needed for node globals in flat config — documented deviation).
+> `npm run lint` → exit 0 over `src/`. TDD: 3 behavioral tests in `src/tests/lintConfig.test.js` (RED→GREEN).
+> ⚠️ `npm test` pre-existing failure (unrelated): `api-sections-16-17-18.test.js` needs live API server on `:3000`
+> (31 fails). Failure set unchanged before/after this change (115→118 pass, 31 fail identical). CI gate (Fase 7) must boot server or exclude that file.
+
+- [x] 5.1 `eslint.config.js` flat: node globals, commonjs, `no-undef`; lint green (exit 0)
+- [x] 5.2 eslint+globals devDeps + `"lint": "eslint src/"`
 
 ## Phase 6: Splits
 
-- [ ] 6.1 `whatsapp/domain/messageSanitization.js` + `intentDetection.js`
-- [ ] 6.2 `bookingDateTime.js` + `bookingDrafts.js`
-- [ ] 6.3 `replyBuilders.js` + `strictFlow.js` + `utils/incomingRateLimit.js`
-- [ ] 6.4 extend `extractPersonName.js`; shrink `handlers/messageHandler.js` — export unchanged
-- [ ] 6.5 `routes/config/shared.js` + `courts.routes.js` + `slots.routes.js`
-- [ ] 6.6 `whatsapp.routes.js` + `notifications.routes.js` + `botAutomation.routes.js`
-- [ ] 6.7 `penalties.routes.js` + `clubClosures.routes.js` + `companyImages.routes.js`; `config.routes.js` → aggregator — URLs identical
-- [ ] 6.8 `services/config/parsers.ts` + `courts.service.ts` + `slots.service.ts` + `penalties.service.ts`
-- [ ] 6.9 `companyImages.service.ts` + `botAutomation.service.ts` + `clubClosures.service.ts` + `whatsapp.service.ts`
-- [ ] 6.10 `configService.ts` → facade — export identical, consumers untouched
-- [ ] 6.11 Backend: `npm test` + lint green (spec)
-- [ ] 6.12 Frontend: typecheck + lint + build green (spec)
+> **BACKEND DONE (2026-10-03)**: `messageHandler.js` 3085→2236L, `config.routes.js` 1272→14L aggregator.
+> STRICT TDD: 57 approval tests written first (RED→GREEN). `npm test` 181 pass / 31 fail (identical pre-existing
+> api-sections set); `npm run lint` exit 0. Stacked PRs: **B-PR1..B-PR6**
+> (https://github.com/fracki1010/padel-proactive-backend/pull/1 .. /pull/6, each targeting the previous branch).
+> Deviation: `bookingDateTime.js` (incl. `getTodayIsoArgentina`) moved into B-PR1 as required dep of intentDetection.
+> **FRONTEND DONE (2026-10-03)**: `configService.ts` 1079→16L facade over 8 files in `src/services/config/`.
+> `npm run build` exit 0; facade API 1:1 (35 methods, 0 missing/extra). Stacked PRs: **F-PR1** (parsers/courts/slots,
+> carries env untrack + gitleaks hook) + **F-PR2** (penalties/closures/images + whatsapp + botAutomation + facade)
+> (https://github.com/fracki1010/padel-proactive-frontend/pull/1, /pull/2).
+> ⚠️ `npm run lint` frontend: PRE-EXISTING repo-wide failure (260 errors baseline → 244 now; split is lint-neutral,
+> all 44 monolith `no-explicit-any` moved verbatim). Lint-green needs separate codebase-wide hardening.
+
+- [x] 6.1 `whatsapp/domain/messageSanitization.js` + `intentDetection.js` (+ `bookingDateTime.js` dep) — B-PR1 `7da3297`
+- [x] 6.2 `bookingDrafts.js` — B-PR2 `06795fe`
+- [x] 6.3 `replyBuilders.js` + `strictFlow.js` + `utils/incomingRateLimit.js` — B-PR3 `687aeb9`
+- [x] 6.4 extend `extractPersonName.js`; shrink `handlers/messageHandler.js` — export unchanged — B-PR3 `687aeb9`
+- [x] 6.5 `routes/config/shared.js` + `courts.routes.js` + `slots.routes.js` — B-PR4 `38d75ea`
+- [x] 6.6 `whatsapp.routes.js` + `notifications.routes.js` + `botAutomation.routes.js` — B-PR5 `1fca486`
+- [x] 6.7 `penalties.routes.js` + `clubClosures.routes.js` + `companyImages.routes.js`; `config.routes.js` → aggregator — URLs identical (34 paths asserted) — B-PR6 `f73537f`
+- [x] 6.8 `services/config/parsers.ts` + `courts.service.ts` + `slots.service.ts` + `penalties.service.ts` — F-PR1/F-PR2
+- [x] 6.9 `companyImages.service.ts` + `botAutomation.service.ts` + `clubClosures.service.ts` + `whatsapp.service.ts` — F-PR2
+- [x] 6.10 `configService.ts` → facade — export identical (35 methods, 1:1), consumers untouched — F-PR2
+- [x] 6.11 Backend: `npm test` (181✔/31✖ pre-existing) + lint green (spec)
+- [ ] 6.12 Frontend: typecheck + lint + build green (spec) — typecheck ✓ + build ✓; lint ✗ PRE-EXISTING repo-wide (see note)
 
 ## Phase 7: CI gates
 
