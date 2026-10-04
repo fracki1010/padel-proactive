@@ -90,7 +90,10 @@ warning confirmed the hook is skipped on fresh clones, which contradicts the
 repo-hygiene requirement that gitleaks MUST run as pre-commit. The hook had been
 tested during apply (reject scenario ×4) in worktrees where it was executable,
 but the committed mode was wrong. Fix: `chmod +x .githooks/pre-commit`
-(mode → `100755`), committed locally on `main` as a follow-up commit.
+(mode → `100755`), recorded in the git index via
+`git update-index --chmod=+x` (required because this repo sits on an NTFS
+mount with `core.filemode=false`, which otherwise ignores chmod), committed
+locally on `main` as a follow-up commit.
 
 ## Engram Traceability
 
