@@ -43,7 +43,6 @@ services:
       REDIS_PORT: 6379
       REDIS_DB: 0
       REDIS_TLS: "false"
-      PUPPETEER_EXECUTABLE_PATH: /usr/bin/chromium
       WA_AUTH_DATA_PATH: /usr/src/app/.wwebjs_auth
     volumes:
       - whatsapp_sessions:/usr/src/app/.wwebjs_auth
